@@ -50,14 +50,16 @@ const mountedRootEntries = []
 
 function createConcurrentRoot(
   container,
-  {hydrate, ui, wrapper: WrapperComponent},
+  {hydrate, ui, wrapper: WrapperComponent, initialProps},
 ) {
   let root
   if (hydrate) {
     act(() => {
       root = ReactDOMClient.hydrateRoot(
         container,
-        WrapperComponent ? React.createElement(WrapperComponent, null, ui) : ui,
+        WrapperComponent
+          ? React.createElement(WrapperComponent, initialProps, ui)
+          : ui,
       )
     })
   } else {
@@ -99,18 +101,26 @@ function createLegacyRoot(container) {
 
 function renderRoot(
   ui,
-  {baseElement, container, hydrate, queries, root, wrapper: WrapperComponent},
+  {
+    baseElement,
+    container,
+    hydrate,
+    queries,
+    root,
+    wrapper: WrapperComponent,
+    initialProps,
+  },
 ) {
-  const wrapUiIfNeeded = innerElement =>
+  const wrapUiIfNeeded = (innerElement, props) =>
     WrapperComponent
-      ? React.createElement(WrapperComponent, null, innerElement)
+      ? React.createElement(WrapperComponent, props, innerElement)
       : innerElement
 
   act(() => {
     if (hydrate) {
-      root.hydrate(wrapUiIfNeeded(ui), container)
+      root.hydrate(wrapUiIfNeeded(ui, initialProps), container)
     } else {
-      root.render(wrapUiIfNeeded(ui), container)
+      root.render(wrapUiIfNeeded(ui, initialProps), container)
     }
   })
 
@@ -128,11 +138,12 @@ function renderRoot(
         root.unmount()
       })
     },
-    rerender: rerenderUi => {
-      renderRoot(wrapUiIfNeeded(rerenderUi), {
+    rerender: (rerenderUi, props) => {
+      renderRoot(wrapUiIfNeeded(rerenderUi, props), {
         container,
         baseElement,
         root,
+        initialProps: props,
       })
       // Intentionally do not return anything to avoid unnecessarily complicating the API.
       // folks can use all the same utilities we return in the first place that are bound to the container
@@ -162,6 +173,7 @@ function render(
     queries,
     hydrate = false,
     wrapper,
+    initialProps,
   } = {},
 ) {
   if (!baseElement) {
@@ -202,6 +214,7 @@ function render(
     hydrate,
     wrapper,
     root,
+    initialProps,
   })
 }
 
@@ -219,7 +232,6 @@ function cleanup() {
 }
 
 function renderHook(renderCallback, options = {}) {
-  const {initialProps, wrapper: WrapperComponent, ...renderOptions} = options
   const result = React.createRef()
 
   function TestComponent({renderCallbackProps}) {
@@ -232,25 +244,15 @@ function renderHook(renderCallback, options = {}) {
     return null
   }
 
-  const wrapUiIfNeeded = (innerElement, props) =>
-    WrapperComponent ? (
-      <WrapperComponent {...props}>{innerElement}</WrapperComponent>
-    ) : (
-      innerElement
-    )
-
-  const component = wrapUiIfNeeded(
-    <TestComponent renderCallbackProps={initialProps} />,
-    initialProps,
+  const {rerender: baseRerender, unmount} = render(
+    <TestComponent renderCallbackProps={options.initialProps} />,
+    options,
   )
-  const {rerender: baseRerender, unmount} = render(component, renderOptions)
 
   function rerender(rerenderCallbackProps) {
     return baseRerender(
-      wrapUiIfNeeded(
-        <TestComponent renderCallbackProps={rerenderCallbackProps} />,
-        rerenderCallbackProps,
-      ),
+      <TestComponent renderCallbackProps={rerenderCallbackProps} />,
+      rerenderCallbackProps,
     )
   }
 
